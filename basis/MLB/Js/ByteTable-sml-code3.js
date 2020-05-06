@@ -1,0 +1,14 @@
+if ((typeof(basis$0ByteTable$1$3)) == "undefined") {basis$0ByteTable$1$3 = {};
+};
+(function(){basis$0ByteTable$1$3.array_to_table$116 = function(a$119){return SmlPrims.charArrayToString(a$119);
+};
+basis$0ByteTable$1$3.sub_unsafe$120 = function(v$165,v$166){return v$165.charCodeAt(v$166);
+};
+basis$0ByteTable$1$3.fromList$127 = function(es$130){return SmlPrims.implode(es$130);
+};
+basis$0ByteTable$1$3.concat$131 = function(vs$134){return SmlPrims.concat(vs$134);
+};
+basis$0ByteTable$1$3.length$135 = function(t$138){return t$138.length;
+};
+return 0;
+})();

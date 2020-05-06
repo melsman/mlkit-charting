@@ -1,0 +1,11 @@
+if ((typeof(basis$0OS$1)) == "undefined") {basis$0OS$1 = {};
+};
+(function(){basis$0OS$1.en$SysErr$53 = new String("SysErr");
+basis$0OS$1.errorMsg$54 = function(x$57){return x$57;
+};
+basis$0OS$1.errorName$58 = function(x$61){return x$61;
+};
+basis$0OS$1.syserror$62 = function(v$64){return [1];
+};
+return 0;
+})();

@@ -1,0 +1,13 @@
+if ((typeof(basis$0ByteSlice$1$7)) == "undefined") {basis$0ByteSlice$1$7 = {};
+};
+(function(){basis$0ByteSlice$1$7.maxLen$2216 = 16777211;
+basis$0ByteSlice$1$7.array_to_table$2217 = function(x$2220){return x$2220;
+};
+basis$0ByteSlice$1$7.array_to_vector$2221 = function(a$2259){return SmlPrims.charArrayToString(a$2259);
+};
+basis$0ByteSlice$1$7.sub_unsafe$2222 = function(v$2261,v$2262){return v$2261[v$2262];
+};
+basis$0ByteSlice$1$7.length0$2229 = function(t$2232){return t$2232.length;
+};
+return 0;
+})();
