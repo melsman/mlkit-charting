@@ -23,21 +23,26 @@ index.html: static/page_start.html page.html static/page_end.html
 highchart: highchart.mlb
 	SML_LIB=$(SML_LIB) $(SMLTOJS) -c $<
 
+DEPLOYDIR=dist
+
 .PHONY: clean
 clean:
-	rm -rf MLB *~ index.html page.html prims.js basis dist
-
-DEPLOYDIR=dist
+	rm -rf MLB *~ index.html page.html prims.js basis
+	rm -rf $(DEPLOYDIR)/MLB $(DEPLOYDIR)/basis $(DEPLOYDIR)/favicon.ico $(DEPLOYDIR)/index.html
+	rm -rf $(DEPLOYDIR)/isodate $(DEPLOYDIR)/lib $(DEPLOYDIR)/listutil $(DEPLOYDIR)/prims.js
 
 .PHONY: deploy
 deploy: index.html
-	rm -rf $(DEPLOYDIR)
-	mkdir -p $(DEPLOYDIR)
-	cp -pa $(SML_LIB)/prims.js $(SML_LIB)/basis $(DEPLOYDIR)
-	cp -pa static/favicon.ico index.html MLB $(DEPLOYDIR)
-	mkdir -p $(DEPLOYDIR)/isodate
-	cp -pa isodate/MLB $(DEPLOYDIR)/isodate
-	mkdir -p $(DEPLOYDIR)/listutil
-	cp -pa listutil/MLB $(DEPLOYDIR)/listutil
-	mkdir -p $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort
-	cp -pa lib/github.com/diku-dk/sml-sort/MLB $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort
+	rm -rf $(DEPLOYDIR)/*
+	cp -pa $(SML_LIB)/prims.js $(DEPLOYDIR)
+	mkdir -p $(DEPLOYDIR)/basis/MLB/Js
+	cp -pa $(SML_LIB)/basis/MLB/Js/*-sml*.js $(DEPLOYDIR)/basis/MLB/Js
+	cp -pa static/favicon.ico index.html $(DEPLOYDIR)
+	mkdir -p $(DEPLOYDIR)/MLB/Js
+	cp -pa MLB/Js/*.js $(DEPLOYDIR)/MLB/Js
+	mkdir -p $(DEPLOYDIR)/isodate/MLB/Js
+	cp -pa isodate/MLB/Js/*.js $(DEPLOYDIR)/isodate/MLB/Js
+	mkdir -p $(DEPLOYDIR)/listutil/MLB/Js
+	cp -pa listutil/MLB/Js/*.js $(DEPLOYDIR)/listutil/MLB/Js
+	mkdir -p $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort/MLB/Js
+	cp -pa lib/github.com/diku-dk/sml-sort/MLB/Js/*.js $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort/MLB/Js
