@@ -4,6 +4,8 @@ signature HIGHCHART = sig
 
   val chartToFptr : chart -> foreignptr
 
+  val setTitle : chart -> string -> unit
+
   val chartTitleLinker : string option -> (unit->unit) option -> JsCore.TypedObjects.obj JsCore.TypedObjects.j
                          -> JsCore.TypedObjects.obj JsCore.TypedObjects.j * (unit -> unit)
 
@@ -12,7 +14,7 @@ signature HIGHCHART = sig
   val pieChart : bool -> Js.elem -> string -> string -> string -> string -> string -> string -> (string * real option) list
                  -> string -> (string -> string -> (string -> string option) -> foreignptr -> string) -> unit
 
-  val barChart : Js.elem -> (string * real) list -> chart
+  val blockbarChart : Js.elem -> (string * real) list -> chart
 
   val timeSeriesChart : { chartRef : foreignptr option ref,
                           chartdiv : Js.elem,
@@ -46,6 +48,24 @@ signature HIGHCHART = sig
   val mkSeries : string -> bool -> (string * (ISODate.t * real) list) list
                  -> JsCore.TypedObjects.obj JsCore.TypedObjects.arr JsCore.TypedObjects.j
   val reflow : chart -> unit
+
+  type barchart
+
+  val barChart : Js.elem ->
+                 {title       : string,
+                  categories  : string list,
+                  ytitle      : string,
+                  ymeasure    : string,  (* e.g., "mm" or "sec" *)
+                  series      : (string * real list) list
+                 } -> barchart
+
+  val setyAxisTitle : barchart -> string -> unit
+
+  val setxAxisCategories : barchart -> string list -> unit
+
+  val removeSeries : barchart -> unit
+
+  val addSeries : barchart -> string * real list -> unit
 
 end
 
@@ -116,6 +136,12 @@ fun splitData grp =
 
 type chart = foreignptr
 fun chartToFptr (x: chart) : foreignptr = x
+
+fun setTitle (c:chart) (t:string) : unit =
+    let open JsCore.TypedObjects infix />
+    in JsCore.method1 JsCore.fptr JsCore.unit c "setTitle"
+                      (objToFptr(P "text" (S t)))
+    end
 
 fun mkHighchart obj: chart =
     JsCore.exec1 {stmt="return new Highcharts.Chart(obj);", res=JsCore.fptr,
@@ -193,7 +219,7 @@ fun pieChart thumb parentElem label kt valCur subtitle innerTitle outerTitle dat
     end handle Fail s => Js.appendChild parentElem ($("No chart: " ^ s))
 
 (* Show a bar chart *)
-fun barChart parentElem (data0 : (string*real) list) : chart =
+fun blockbarChart parentElem (data0 : (string*real) list) : chart =
     let open JsCore.TypedObjects infix />
         val data = Listutil.withPct 1000 data0
         val series = List.map (fn (k,v,p) => P "name" (S k) /> P "data" (A [R p])) data
@@ -239,6 +265,66 @@ fun barChart parentElem (data0 : (string*real) list) : chart =
                                                   P "dataLabels" dataLabels)) />
                     P "series" (A series)
     in mkHighchart obj
+    end
+
+type barchart = chart
+fun barChart (parentElem:Js.elem) {title       : string,
+                                   categories  : string list,
+                                   ytitle      : string,
+                                   ymeasure    : string,  (* e.g., "mm" or "sec" *)
+                                   series      : (string * real list) list
+                                  } : chart =
+    let open JsCore.TypedObjects infix />
+        val chart = P "type" (S "column") />
+                    P "renderTo" (F (toForeignPtr parentElem))
+        val fmt = if ymeasure = "lines" then ".0f"
+                  else ".3f"
+        val obj = P "chart" chart />
+                  P "credits" (P "enabled" (B false)) />
+                  P "exporting" (P "enabled" (B false)) />
+                  P "title" (P "text" (S title)) />
+                  P "subtitle" (P "text" (F JsUtil.null)) />
+                  P "xAxis" (P "categories" (A (map S categories)) /> P "crosshair" (B true)) />
+                  P "yAxis" (P "min" (I 0) /> P "title" (P "text" (S ytitle))) />
+                  P "tooltip" (P "headerFormat" (S "<span style='font-size:10px'>{point.key}</span><table>") />
+                               P "pointFormat" (S ("<tr><td style='color:{series.color};padding:0'>{series.name}: </td>" ^
+                                                   "<td style='padding:0'><b>{point.y:" ^ fmt ^ "} " ^
+                                                   ymeasure ^ "</b></td></tr>")) />
+                               P "footerFormat" (S "</table>") />
+                               P "shared" (B true) />
+                               P "useHTML" (B true)) />
+                  P "plotOptions" (P "column" (P "pointPadding" (R 0.2) />
+                                                 P "boarderWidth" (I 0))) />
+                  P "series" (A (map (fn (s,rs) => P "name" (S s) /> P "data" (A (map R rs))) series))
+    in mkHighchart obj
+    end
+
+fun arraySub (a:foreignptr, i:int) : foreignptr =
+    JsCore.exec2{stmt="return a[i];", arg1=("a",JsCore.fptr), arg2=("i",JsCore.int), res=JsCore.fptr}(a,i)
+
+fun setyAxisTitle (c:chart) (s:string) : unit =
+    let val yAxis = JsCore.getProperty c JsCore.fptr "yAxis"
+        val yAxis0 = arraySub(yAxis,0)
+    in setTitle yAxis0 s
+    end
+
+fun setxAxisCategories (c:barchart) (categories:string list) : unit =
+    let val xAxis = JsCore.getProperty c JsCore.fptr "xAxis"
+        val xAxis0 = arraySub(xAxis,0)
+        open JsCore.TypedObjects infix />
+    in JsCore.method1 JsCore.fptr JsCore.unit xAxis0 "setCategories"
+                      (arrToFptr(A (map S categories)))
+    end
+
+fun removeSeries (c:chart) : unit =
+    JsCore.exec1 {stmt="while (c.series.length > 0) { c.series[0].remove(); }",
+                  arg1=("c",JsCore.fptr), res=JsCore.unit} c
+
+fun addSeries (c:barchart) ((s,rs):string * real list) : unit =
+    let open JsCore.TypedObjects infix />
+        val obj = P "name" (S s) /> P "data" (A (map R rs))
+    in JsCore.method1 JsCore.fptr JsCore.unit c "addSeries"
+                      (objToFptr obj)
     end
 
 fun mymap0 f nil ys = rev ys

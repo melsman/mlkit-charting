@@ -26,23 +26,33 @@ highchart: highchart.mlb
 DEPLOYDIR=dist
 
 .PHONY: clean
-clean:
+clean: cleandeploy
 	rm -rf MLB *~ index.html page.html prims.js basis
+
+.PHONY: cleandeploy
+cleandeploy:
 	rm -rf $(DEPLOYDIR)/MLB $(DEPLOYDIR)/basis $(DEPLOYDIR)/favicon.ico $(DEPLOYDIR)/index.html
 	rm -rf $(DEPLOYDIR)/isodate $(DEPLOYDIR)/lib $(DEPLOYDIR)/listutil $(DEPLOYDIR)/prims.js
 
 .PHONY: deploy
-deploy: index.html
-	rm -rf $(DEPLOYDIR)/*
+deploy: cleandeploy index.html
 	cp -pa $(SML_LIB)/prims.js $(DEPLOYDIR)
 	mkdir -p $(DEPLOYDIR)/basis/MLB/Js
 	cp -pa $(SML_LIB)/basis/MLB/Js/*-sml*.js $(DEPLOYDIR)/basis/MLB/Js
 	cp -pa static/favicon.ico index.html $(DEPLOYDIR)
+	cp -pa static/custom.css index.html $(DEPLOYDIR)
 	mkdir -p $(DEPLOYDIR)/MLB/Js
 	cp -pa MLB/Js/*.js $(DEPLOYDIR)/MLB/Js
 	mkdir -p $(DEPLOYDIR)/isodate/MLB/Js
 	cp -pa isodate/MLB/Js/*.js $(DEPLOYDIR)/isodate/MLB/Js
 	mkdir -p $(DEPLOYDIR)/listutil/MLB/Js
 	cp -pa listutil/MLB/Js/*.js $(DEPLOYDIR)/listutil/MLB/Js
+#
 	mkdir -p $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort/MLB/Js
 	cp -pa lib/github.com/diku-dk/sml-sort/MLB/Js/*.js $(DEPLOYDIR)/lib/github.com/diku-dk/sml-sort/MLB/Js
+#
+	mkdir -p $(DEPLOYDIR)/lib/github.com/diku-dk/sml-json/MLB/Js
+	cp -pa lib/github.com/diku-dk/sml-json/MLB/Js/*.js $(DEPLOYDIR)/lib/github.com/diku-dk/sml-json/MLB/Js
+#
+	mkdir -p $(DEPLOYDIR)/lib/github.com/diku-dk/sml-setmap/map/MLB/Js
+	cp -pa lib/github.com/diku-dk/sml-setmap/map/MLB/Js/*.js $(DEPLOYDIR)/lib/github.com/diku-dk/sml-setmap/map/MLB/Js

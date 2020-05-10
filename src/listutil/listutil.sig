@@ -48,6 +48,7 @@ signature LISTUTIL = sig
   val groupBy' : ('a -> ''b * 'c) -> 'a list -> (''b * 'c list) list
 
   val locate : ''a -> ''a list -> int option
+  val mem : ''a -> ''a list -> bool
 
   val listToString : string list -> string
 

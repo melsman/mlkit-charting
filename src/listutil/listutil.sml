@@ -171,6 +171,9 @@ fun locate elem =
                             else aux (n + 1) xs
   in aux 0 end
 
+fun mem x nil = false
+  | mem x (y::ys) = x = y orelse mem x ys
+
 fun listToString xs = "[" ^ String.concatWith ", " xs ^ "]"
 
 fun update (k, v) xs =
