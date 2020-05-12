@@ -18,11 +18,36 @@ fun collect (sel:'a->string) (xs:'a list) : string list =
                       else c::acc
                    end) nil xs)
 
+fun getMachines (lines: Data.line list) : string list =
+    let val d = List.filter (fn l => #cname l = "MLKIT") lines
+    in collect #mach d
+    end
+
+fun getMachineVersion (lines: Data.line list) : string option =
+    case getMachines lines of
+        x :: _ => SOME x
+      | _ => NONE
+
+fun filebaseOfUrl s =
+    case rev(String.tokens (fn c => c = #"/") s) of
+        file :: _ => OS.Path.base file  (* drop extension *)
+      | _ => die ("fileOfUrl: failed to parse url " ^ s)
+
+fun decomposeFilebase (filebase:string) =
+    case String.tokens (fn c => c = #"_") filebase of
+        ["report",v,mt,d] => SOME (v,mt,d)
+      | _ => NONE
+
+fun avg nil = 0.0
+  | avg xs = foldl (op +) 0.0 xs / (real (length xs))
+
+
 (* ------------------- *)
 (* Some useful widgets *)
 (* ------------------- *)
 
-
+(* A generic selection widget to be installed at the provided element. It returns a function
+ * that can be used to find the current value of the selection. *)
 fun select (e:Js.elem) (options:(string*string)list) (onChange: string -> bool) : unit -> string =
     let val options' = map (fn (v,s) => taga "option" [("value",v)] ($s)) options
         val sel = taga "select" [("class", "custom-select custom-select-sm")]
@@ -145,177 +170,196 @@ fun genGraph (picker_elem, graph_parent_elem) (dataspecs:dataspec list) (ymeasur
     in ()
     end
 
-(* The page DOM *)
+(* --------- *)
+(* The pages *)
+(* --------- *)
 
+(* The snapshot page *)
+structure SnapshotPage :
+  sig
+    val setDataset : (Data.tag_data list) -> (string * Data.line list) list -> unit
+    val elem       : Js.elem
+  end =
+struct
+  val report_file_elem = tag0 "div"
+  val date_elem = tag0 "div"
+  val commitdate_elem = tag0 "div"
+  val mach_elem = tag0 "div"
+
+  val header_block_elem =
+      taga "div" [("class","card w-100")]
+           (taga "div" [("class","card-body")]
+                 (taga "h6" [("class","card-subtitle")] ($"Report Snapshot") &
+                  tag "p" report_file_elem &
+                  taga "h6" [("class","card-subtitle")] ($"Computation date") &
+                  tag "p" date_elem &
+                  taga "h6" [("class","card-subtitle")] ($"Commit date") &
+                  tag "p" commitdate_elem &
+                  taga "h6" [("class","card-subtitle")] ($"Machine") &
+                  tag "p" mach_elem
+                 ))
+
+  val exectime_picker_elem = tag0 "div"
+  val exectime_graph_elem = tag0 "div"
+
+  val memusage_picker_elem = tag0 "div"
+  val memusage_graph_elem = tag0 "div"
+
+  val comptime_picker_elem = $""  (* dummy - not used *)
+  val comptime_graph_elem = tag0 "div"
+
+  val plen_picker_elem = $""  (* dummy - not used *)
+  val plen_graph_elem = tag0 "div"
+
+  val exec_block_elem =
+      taga "div" [("class","card w-100")]
+           (taga "div" [("class","card-body")]
+                 (tag "h2" ($"Execution Time") &
+                  tag "p" exectime_picker_elem &
+                  tag "p" exectime_graph_elem &
+                  tag "h2" ($"Memory Usage") &
+                  tag "p" memusage_picker_elem &
+                  tag "p" memusage_graph_elem &
+                  tag "h2" ($"Compilation Time") &
+                  tag "p" comptime_graph_elem &
+                  tag "h2" ($"Program Length") &
+                  tag "p" plen_graph_elem))
+
+  val elem =
+      tag "div"
+          (tag "p" header_block_elem &
+               tag "p" exec_block_elem)
+
+  local
+    val data : Data.line list ref = ref nil
+    val datalisteners : (unit -> unit) list ref = ref nil
+  in
+    fun getData () : Data.line list = !data
+    fun setData (d:Data.line list) =
+        (data := d; List.app (fn f => f()) (!datalisteners))
+    fun redraw f = datalisteners := f :: (!datalisteners)
+  end
+
+  fun setMachine_elem mach =
+      (JsUtil.removeChildren mach_elem;
+       Js.appendChild mach_elem ($mach))
+
+  fun setDate_elem date =
+      (JsUtil.removeChildren date_elem;
+       Js.appendChild date_elem ($date))
+
+  fun setCommitdate_elem (tag_data:Data.tag_data list) (tag:string) =
+      let fun set v = (JsUtil.removeChildren commitdate_elem;
+                       Js.appendChild commitdate_elem ($v))
+      in case List.find (fn td => #tag td = tag) tag_data of
+             SOME td => #date td set
+           | NONE => set "cannot find date"
+      end
+
+  fun installGraphs () =
+      let
+        val execTimeDataSpecs : dataspec list =
+            [{kind="real", title="Real time (sec)", getnum=avg o (map #real) o #runs},
+             {kind="user", title="User time (sec)", getnum=avg o (map #user) o #runs},
+             {kind="sys",  title="Sys time (sec)",  getnum=avg o (map #sys) o #runs}]
+
+        val memUsageDataSpecs : dataspec list =
+            [{kind="rss", title="Resident set size (kb)", getnum=avg o (map (real o #rss)) o #runs},
+             {kind="binsz", title="Size of executable (kb)", getnum=real o #binsz}]
+
+        val compTimeDataSpecs : dataspec list =
+            [{kind="ctime", title="Compilation time (sec)", getnum= #ctime}]
+
+        val plenDataSpecs : dataspec list =
+            [{kind="plen",  title="Program length (lines)",  getnum=real o #plen}]
+
+
+      in genGraph (exectime_picker_elem, exectime_graph_elem)
+                  execTimeDataSpecs "sec" getData redraw
+       ; genGraph (memusage_picker_elem, memusage_graph_elem)
+                  memUsageDataSpecs "kb" getData redraw
+       ; genGraph (comptime_picker_elem, comptime_graph_elem)
+                  compTimeDataSpecs "sec" getData redraw
+       ; genGraph (plen_picker_elem, plen_graph_elem)
+                  plenDataSpecs "lines" getData redraw
+      end
+
+  fun setDataset (tag_data:Data.tag_data list) (dataset:(string * Data.line list) list) : unit =
+      let val dataset = map (fn (url,data) => (filebaseOfUrl url, data)) dataset
+          val reports = map #1 dataset
+          fun f r =
+              case decomposeFilebase r of
+                  SOME (v,mt,d) =>
+                  let val data =
+                          case Listutil.lookupOpt dataset r of
+                              SOME data => data
+                            | NONE => die "setDataset.no data"
+                      val m = case getMachineVersion data of
+                                  SOME m => m
+                                | NONE => "-"
+                  in setDate_elem d
+                   ; setMachine_elem m
+                   ; setCommitdate_elem tag_data v
+                   ; setData data
+                   ; true
+                  end
+                | NONE => die ("setDataset.expected file name format 'report_version_machine_YYYY-MM-DD' - got " ^ r)
+          val e = tag0 "div"
+          val _ = select e (map (fn v => (v,v)) reports) f
+          val () = case reports of
+                       r :: _ => (f r; ())
+                     | _ => ()
+      in Js.appendChild report_file_elem e
+       ; installGraphs ()
+      end
+
+end
+
+(* The raw data page *)
+structure RawDataPage : sig val addLinks : string list -> unit
+                            val elem     : Js.elem
+                        end =
+struct
+  val list_elem = tag0 "div"
+  val raw_elem = tag "div" (tag "h2" ($"Links to Raw Data") & list_elem)
+  fun addLinks (links:string list) : unit =
+      let val hrefs = map (fn s => tag "li" (taga "a" [("href",s)] ($s))) links
+          val ul = tag "ul" (connect hrefs)
+      in Js.appendChild list_elem ul
+      end
+  val elem = raw_elem
+end
+
+
+(* The about page *)
+structure AboutPage : sig val elem : Js.elem end =
+struct
+  val elem =
+      tag "div"
+          (tag "h2" ($"About these Benchmarks") &
+               tag "p" ($"The source code for the benchmarks are available from " &
+                         taga "a" [("href","https://github.com/melsman/mlkit-bench")]
+                         ($"https://github.com/melsman/mlkit-bench") & ($".")))
+end
+
+(* The main page *)
 val body = case Js.getElementById Js.document "body" of
                SOME e => e
              | NONE => raise Fail "cannot find body element"
 
-val list_elem = tag0 "div"
-
-val raw_elem =
-    tag "div" (tag "h2" ($"Links to Raw Data") & list_elem)
-
-
-val report_file_elem = tag0 "div"
-val date_elem = tag0 "div"
-val mach_elem = tag0 "div"
-
-val header_block_elem =
-    taga "div" [("class","card w-100")]
-         (taga "div" [("class","card-body")]
-               (taga "h6" [("class","card-subtitle")]
-                     ($"Report Snapshot") &
-                tag "p" report_file_elem &
-                taga "h6" [("class","card-subtitle")]
-                     ($"Computation date") &
-                tag "p" date_elem &
-                taga "h6" [("class","card-subtitle")]
-                     ($"Machine") &
-                tag "p" mach_elem
-               ))
-
-val exectime_picker_elem = tag0 "div"
-val exectime_graph_elem = tag0 "div"
-
-val memusage_picker_elem = tag0 "div"
-val memusage_graph_elem = tag0 "div"
-
-val comptime_picker_elem = $""  (* dummy - not used *)
-val comptime_graph_elem = tag0 "div"
-
-val plen_picker_elem = $""  (* dummy - not used *)
-val plen_graph_elem = tag0 "div"
-
-val exec_block_elem =
-    taga "div" [("class","card w-100")]
-         (taga "div" [("class","card-body")]
-               (tag "h2" ($"Execution Time") &
-                tag "p" exectime_picker_elem &
-                tag "p" exectime_graph_elem &
-                tag "h2" ($"Memory Usage") &
-                tag "p" memusage_picker_elem &
-                tag "p" memusage_graph_elem &
-                tag "h2" ($"Compilation Time") &
-                tag "p" comptime_graph_elem &
-                tag "h2" ($"Program Length") &
-                tag "p" plen_graph_elem))
-
-val about_elem =
-    tag "div"
-        (tag "h2" ($"About these Benchmarks") &
-             tag "p" ($"The source code for the benchmarks are available from " &
-                       taga "a" [("href","https://github.com/melsman/mlkit-bench")]
-                       ($"https://github.com/melsman/mlkit-bench") & ($".")))
-
-val snapshot_elem =
-    tag "div"
-        (tag "p" header_block_elem &
-         tag "p" exec_block_elem)
-
-val () = navbar body [{pg_title="Snapshot", pg_gen=fn () => snapshot_elem},
+val () = navbar body [{pg_title="Snapshot", pg_gen=fn () => SnapshotPage.elem},
                       {pg_title="Historic", pg_gen=fn() => $("To Come")},
-                      {pg_title="Raw Data", pg_gen=fn () => raw_elem},
-                      {pg_title="About", pg_gen=fn () => about_elem}]
+                      {pg_title="Raw Data", pg_gen=fn () => RawDataPage.elem},
+                      {pg_title="About", pg_gen=fn () => AboutPage.elem}]
 
-local
-  val data : Data.line list ref = ref nil
-  val datalisteners : (unit -> unit) list ref = ref nil
-in
-fun getData () : Data.line list = !data
-fun setData (d:Data.line list) =
-    (data := d; List.app (fn f => f()) (!datalisteners))
-fun redraw f = datalisteners := f :: (!datalisteners)
-end
-
-fun getMachines (lines: Data.line list) : string list =
-    let val d = List.filter (fn l => #cname l = "MLKIT") lines
-    in collect #mach d
-    end
-
-fun getMachineVersion (lines: Data.line list) : string option =
-    case getMachines lines of
-        x :: _ => SOME x
-      | _ => NONE
-
-fun setMachine_elem mach =
-    (JsUtil.removeChildren mach_elem;
-     Js.appendChild mach_elem ($mach))
-
-fun setDate_elem date =
-    (JsUtil.removeChildren date_elem;
-     Js.appendChild date_elem ($date))
-
-fun filebaseOfUrl s =
-    case rev(String.tokens (fn c => c = #"/") s) of
-        file :: _ => OS.Path.base file  (* drop extension *)
-      | _ => die ("fileOfUrl: failed to parse url " ^ s)
-
-fun decomposeFilebase (filebase:string) =
-    case String.tokens (fn c => c = #"_") filebase of
-        ["report",v,mt,d] => SOME (v,mt,d)
-      | _ => NONE
-
-
-fun setReportFiles_elem (dataset:(string * Data.line list) list) : unit =
-    let val dataset = map (fn (url,data) => (filebaseOfUrl url, data)) dataset
-        val reports = map #1 dataset
-        fun f r =
-            case decomposeFilebase r of
-                SOME (v,mt,d) =>
-                let val data =
-                        case Listutil.lookupOpt dataset r of
-                            SOME data => data
-                          | NONE => die "setReportFilesElem.no data"
-                    val m = case getMachineVersion data of
-                                SOME m => m
-                              | NONE => "-"
-                in setDate_elem d
-                 ; setMachine_elem m
-                 ; setData data
-                 ; true
-                end
-              | NONE => die ("setReportFilesElem.expected file name format 'report_version_machine_YYYY-MM-DD' - got " ^ r)
-        val e = tag0 "div"
-        val _ = select e (map (fn v => (v,v)) reports) f
-        val () = case reports of
-                     r :: _ => (f r; ())
-                   | _ => ()
-    in Js.appendChild report_file_elem e
-    end
-
-fun avg nil = 0.0
-  | avg xs = foldl (op +) 0.0 xs / (real (length xs))
-
-val execTimeDataSpecs : dataspec list =
-    [{kind="real", title="Real time (sec)", getnum=avg o (map #real) o #runs},
-     {kind="user", title="User time (sec)", getnum=avg o (map #user) o #runs},
-     {kind="sys",  title="Sys time (sec)",  getnum=avg o (map #sys) o #runs}]
-
-val memUsageDataSpecs : dataspec list =
-    [{kind="rss", title="Resident set size (kb)", getnum=avg o (map (real o #rss)) o #runs},
-     {kind="binsz", title="Size of executable (kb)", getnum=real o #binsz}]
-
-val compTimeDataSpecs : dataspec list =
-    [{kind="ctime", title="Compilation time (sec)", getnum= #ctime}]
-
-val plenDataSpecs : dataspec list =
-    [{kind="plen",  title="Program length (lines)",  getnum=real o #plen}]
 
 val () =
-    Data.getReports
-        (fn links =>
-            let val hrefs = map (fn s => tag "li" (taga "a" [("href",s)] ($s))) links
-                val ul = tag "ul" (connect hrefs)
-                val () = Js.appendChild list_elem ul
-            in Data.processLinks links (fn dataset =>
-                                           ( setReportFiles_elem dataset
-                                           ; genGraph (exectime_picker_elem, exectime_graph_elem)
-                                                      execTimeDataSpecs "sec" getData redraw
-                                           ; genGraph (memusage_picker_elem, memusage_graph_elem)
-                                                      memUsageDataSpecs "kb" getData redraw
-                                           ; genGraph (comptime_picker_elem, comptime_graph_elem)
-                                                      compTimeDataSpecs "sec" getData redraw
-                                           ; genGraph (plen_picker_elem, plen_graph_elem)
-                                                      plenDataSpecs "lines" getData redraw))
-            end)
+    Data.getMLKitTags
+        (fn tag_data =>
+            Data.getReports
+                (fn links =>
+                    let val () = RawDataPage.addLinks links
+                    in Data.processLinks links (fn dataset =>
+                                                   SnapshotPage.setDataset tag_data dataset
+                                               )
+                    end))

@@ -141,15 +141,23 @@ fun getUrl url (f:string->unit) : unit =
      ; X.send r NONE
     end
 
+infix $> ?>
+fun (Json.OBJECT obj) ?> s =
+    (case Json.objLook obj s of
+         SOME t => t
+       | NONE => die ("?> couldn't find '" ^ s ^ "' in object"))
+  | _ ?> s = die "?> expects left argument to be an object"
+
+fun j $> s =
+    case j ?> s of
+        Json.STRING s => s
+      | _ => die ("$> expects string for '" ^ s ^ "' in object")
+
 fun getReports (f : string list -> unit) : unit =
     getUrl "https://api.github.com/repos/melsman/mlkit-bench/contents/reports"
            (fn c =>
                let val l =
-                       Json.foldlArrayJson (fn (Json.OBJECT obj,ls) =>
-                                               (case Json.objLook obj "download_url" of
-                                                    SOME (Json.STRING s) => s::ls
-                                                  | _ => ls)
-                                           | (_,ls) => ls) nil c
+                       Json.foldlArrayJson (fn (j,ls) => (j $> "download_url") :: ls) nil c
                in f l
                end)
 
@@ -165,5 +173,46 @@ fun processLinks links (f:(string*line list) list -> unit) : unit =
                             processLink x (fn d => f ((x,d)::ds)))
     in loop links f
     end
+
+type tag_data = {tag: string,
+                 date : (string -> unit) -> unit}
+
+fun getTagDate url (f : string -> unit) : unit =
+    getUrl url (fn c =>
+                   let val j = Json.fromString c
+                       fun findDate obj =
+                           case Json.objLook obj "date" of
+                               SOME (Json.STRING d) => d
+                             | _ => die "getTagDate.no date object"
+                       val d = case j of
+                                   Json.OBJECT obj =>
+                                   (case Json.objLook obj "author" of
+                                        SOME (Json.OBJECT obj) => findDate obj
+                                      | _ =>
+                                        (case Json.objLook obj "tagger" of
+                                             SOME (Json.OBJECT obj) => findDate obj
+                                           | _ => die "getTagDate.no tagger or author object"))
+                                 | _ => die "getTagDate.expecting object"
+                   in f d
+                   end)
+
+
+fun getMLKitTags (f : tag_data list -> unit) : unit =
+    getUrl "https://api.github.com/repos/melsman/mlkit/git/refs/tags"
+           (fn c =>
+               let val l =
+                       Json.foldlArrayJson
+                           (fn (j,ls) =>
+                               let val reference = j $> "ref"
+                                   val tag = case String.tokens (fn c => c = #"/") reference of
+                                                 ["refs","tags",tag] => tag
+                                               | _ => die "getMLKitTags.wrong format in ref"
+                                   val url  = j ?> "object" $> "url"
+                               in {tag=tag,
+                                   date=getTagDate url} :: ls
+                               end) nil c
+               in f l
+               end)
+
 
 end
