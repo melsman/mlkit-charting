@@ -174,8 +174,16 @@ fun processLinks links (f:(string*line list) list -> unit) : unit =
     in loop links f
     end
 
-type tag_data = {tag: string,
-                 date : (string -> unit) -> unit}
+type git_tag_data = {tag: string,
+                     date : (string -> unit) -> unit}
+
+fun cache_cc (f : (string -> unit) -> unit) : (string -> unit) -> unit =
+    let val xr : string option ref = ref NONE
+    in fn g => case !xr of
+                   SOME x => g x
+                 | NONE => f (fn x => (xr := SOME x; g x))
+    end
+
 
 fun getTagDate url (f : string -> unit) : unit =
     getUrl url (fn c =>
@@ -197,7 +205,7 @@ fun getTagDate url (f : string -> unit) : unit =
                    end)
 
 
-fun getMLKitTags (f : tag_data list -> unit) : unit =
+fun getMLKitTags (f : git_tag_data list -> unit) : unit =
     getUrl "https://api.github.com/repos/melsman/mlkit/git/refs/tags"
            (fn c =>
                let val l =
@@ -209,7 +217,7 @@ fun getMLKitTags (f : tag_data list -> unit) : unit =
                                                | _ => die "getMLKitTags.wrong format in ref"
                                    val url  = j ?> "object" $> "url"
                                in {tag=tag,
-                                   date=getTagDate url} :: ls
+                                   date=cache_cc(getTagDate url)} :: ls
                                end) nil c
                in f l
                end)

@@ -16,7 +16,7 @@ signature HIGHCHART = sig
 
   val blockbarChart : Js.elem -> (string * real) list -> chart
 
-  val timeSeriesChart : { chartRef : foreignptr option ref,
+  val timeSeriesChart : { chartRef : chart option ref,
                           chartdiv : Js.elem,
                           height : int option,
                           navigator : bool,
@@ -25,10 +25,11 @@ signature HIGHCHART = sig
                           plottype : string,
                           showLegend : bool,
                           title : string option,
+                          ytitle : string option,
                           compare : bool,
                           onRedraw : (foreignptr -> unit) option,
                           rangeSelector : bool } ->
-                        ((string * (ISODate.t * real) list) list -> unit)
+                        (string * (ISODate.t * real) list) list -> unit
 (*
   val timeSeriesChartThumbnail : { chartdiv : Js.elem,
                                    title : string,
@@ -40,6 +41,8 @@ signature HIGHCHART = sig
                                  unit
 *)
 
+  val addTimeSeries : chart -> string * (ISODate.t * real) list -> unit
+
   val alphaChart : Js.elem -> foreignptr option ref
                    -> (string * (ISODate.t * real) list) list ->  unit
 
@@ -49,23 +52,25 @@ signature HIGHCHART = sig
                  -> JsCore.TypedObjects.obj JsCore.TypedObjects.arr JsCore.TypedObjects.j
   val reflow : chart -> unit
 
-  type barchart
+  val setyAxisTitle : chart -> string -> unit
+  val removeSeries : chart -> unit
 
-  val barChart : Js.elem ->
-                 {title       : string,
-                  categories  : string list,
-                  ytitle      : string,
-                  ymeasure    : string,  (* e.g., "mm" or "sec" *)
-                  series      : (string * real list) list
-                 } -> barchart
+  structure BarChart :
+            sig
+              type t
+              val barChart : Js.elem ->
+                             {title       : string,
+                              categories  : string list,
+                              ytitle      : string,
+                              ymeasure    : string,  (* e.g., "mm" or "sec" *)
+                              series      : (string * real list) list
+                             } -> t
 
-  val setyAxisTitle : barchart -> string -> unit
-
-  val setxAxisCategories : barchart -> string list -> unit
-
-  val removeSeries : barchart -> unit
-
-  val addSeries : barchart -> string * real list -> unit
+              val setyAxisTitle : t -> string -> unit
+              val setxAxisCategories : t -> string list -> unit
+              val removeSeries : t -> unit
+              val addSeries : t -> string * real list -> unit
+            end
 
 end
 
@@ -267,7 +272,21 @@ fun blockbarChart parentElem (data0 : (string*real) list) : chart =
     in mkHighchart obj
     end
 
-type barchart = chart
+fun arraySub (a:foreignptr, i:int) : foreignptr =
+    JsCore.exec2{stmt="return a[i];", arg1=("a",JsCore.fptr), arg2=("i",JsCore.int), res=JsCore.fptr}(a,i)
+
+fun setyAxisTitle (c:chart) (s:string) : unit =
+    let val yAxis = JsCore.getProperty c JsCore.fptr "yAxis"
+        val yAxis0 = arraySub(yAxis,0)
+    in setTitle yAxis0 s
+    end
+
+fun removeSeries (c:chart) : unit =
+    JsCore.exec1 {stmt="while (c.series.length > 0) { c.series[0].remove(); }",
+                  arg1=("c",JsCore.fptr), res=JsCore.unit} c
+
+structure BarChart = struct
+type t = chart
 fun barChart (parentElem:Js.elem) {title       : string,
                                    categories  : string list,
                                    ytitle      : string,
@@ -299,16 +318,9 @@ fun barChart (parentElem:Js.elem) {title       : string,
     in mkHighchart obj
     end
 
-fun arraySub (a:foreignptr, i:int) : foreignptr =
-    JsCore.exec2{stmt="return a[i];", arg1=("a",JsCore.fptr), arg2=("i",JsCore.int), res=JsCore.fptr}(a,i)
+val setyAxisTitle = setyAxisTitle
 
-fun setyAxisTitle (c:chart) (s:string) : unit =
-    let val yAxis = JsCore.getProperty c JsCore.fptr "yAxis"
-        val yAxis0 = arraySub(yAxis,0)
-    in setTitle yAxis0 s
-    end
-
-fun setxAxisCategories (c:barchart) (categories:string list) : unit =
+fun setxAxisCategories (c:t) (categories:string list) : unit =
     let val xAxis = JsCore.getProperty c JsCore.fptr "xAxis"
         val xAxis0 = arraySub(xAxis,0)
         open JsCore.TypedObjects infix />
@@ -316,16 +328,15 @@ fun setxAxisCategories (c:barchart) (categories:string list) : unit =
                       (arrToFptr(A (map S categories)))
     end
 
-fun removeSeries (c:chart) : unit =
-    JsCore.exec1 {stmt="while (c.series.length > 0) { c.series[0].remove(); }",
-                  arg1=("c",JsCore.fptr), res=JsCore.unit} c
+val removeSeries = removeSeries
 
-fun addSeries (c:barchart) ((s,rs):string * real list) : unit =
+fun addSeries (c:t) ((s,rs):string * real list) : unit =
     let open JsCore.TypedObjects infix />
         val obj = P "name" (S s) /> P "data" (A (map R rs))
     in JsCore.method1 JsCore.fptr JsCore.unit c "addSeries"
                       (objToFptr obj)
     end
+end
 
 fun mymap0 f nil ys = rev ys
   | mymap0 f (x::xs) ys = mymap0 f xs (f x::ys)
@@ -372,6 +383,16 @@ fun mkSeriesSimple (name,tseries:(ISODate.t*real)list) : foreignptr =
     in objToFptr series
     end
 
+fun addTimeSeries (c:chart) (name, tseries : (ISODate.t*real)list) : unit =
+    let open JsCore.TypedObjects infix />
+        val obj =
+            P "name" (S name) />
+              P "type" (S "line") />
+              P "tooltip" (P "valueDecimals" (I 2)) />
+              P "data" (mkData tseries)
+    in JsCore.method1 JsCore.fptr JsCore.unit c "addSeries"
+                      (objToFptr obj)
+    end
 
 fun highChart {chartdiv, chartRef: foreignptr option ref, obj: JsCore.TypedObjects.obj JsCore.TypedObjects.j} =
     let val () = JsUtil.removeChildren chartdiv
@@ -410,7 +431,7 @@ fun chartTitleLinker (titleOpt:string option) (ontitleClick:(unit->unit)option) 
     end
 
 (* plottype: "area" or "column" *)
-fun timeSeriesChart {chartdiv, chartRef, title: string option, plottype: string,
+fun timeSeriesChart {chartdiv, chartRef, title: string option, ytitle: string option, plottype: string,
                      nullThreshold:bool, showLegend:bool, navigator:bool,height:int option,
                      ontitleClick:(unit -> unit)option, compare : bool,
                      onRedraw : (foreignptr -> unit) option, rangeSelector : bool } ts =
@@ -427,6 +448,9 @@ fun timeSeriesChart {chartdiv, chartRef, title: string option, plottype: string,
         val chart = case onRedraw of
                         SOME f => chart /> P "events" (P "redraw" (F (JsUtil.mkEventHandler f)))
                       | NONE => chart
+        val chart = case ytitle of
+                        SOME _ => chart /> P "spacing" (A[I 5, I 20, I 40, I 10])
+                      | NONE => chart
         val series = mkSeries plottype nullThreshold ts
         val obj =
             P "chart" chart />
@@ -438,13 +462,15 @@ fun timeSeriesChart {chartdiv, chartRef, title: string option, plottype: string,
                   else obj /> (P "navigator" (P "enabled" (B false)) />
                                P "scrollbar" (P "enabled" (B false)))
         val obj = if showLegend then
-                    obj /> P "legend" (P "align" (S"right") />
-                                       P "enabled" (B true) />
+                    obj /> P "legend" (P "enabled" (B true) (*/>*)
+(*                                       P "align" (S"right") />
                                        P "floating" (B false) />
                                        P "width" (I 300) />
                                        P "layout" (S"horizontal") />
                                        P "verticalAlign" (S"top") />
-                                       P "x" (I ~30))
+                                       P "x" (I ~30)
+*)
+                                      )
                   else obj
         val obj = if plottype = "column" then
                     obj /> P "tooltip" (P "valueSuffix" (S "%"))
@@ -465,6 +491,10 @@ fun timeSeriesChart {chartdiv, chartRef, title: string option, plottype: string,
                       obj /> P "plotOptions" (P "series" (P "compare" (S "percent") />
                                                             P "compareBase" (I 100)))
                   else obj
+        val obj = case ytitle of
+                      SOME text =>
+                      obj /> P "yAxis" (P "min" (I 0) /> P "title" (P "text" (S text)))
+                    | NONE => obj
     in highChart {chartdiv=chartdiv, chartRef=chartRef, obj=obj}
      ; maybeSetupLink()
     end
